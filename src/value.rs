@@ -1,7 +1,7 @@
 //! Defines how to turn Variant values into Lua values and back.
 
 use rbx_dom_weak::types::{
-    CFrame, Color3, Color3uint8, Variant, VariantType, Vector3, Vector3int16,
+    CFrame, Color3, Color3uint8, Variant, VariantType, Vector3, Vector3int16, Enum
 };
 use rlua::{
     Context, MetaMethod, Result as LuaResult, ToLua, UserData, UserDataMethods, Value as LuaValue,
@@ -28,7 +28,7 @@ pub fn rbxvalue_to_lua<'lua>(context: Context<'lua>, value: &Variant) -> LuaResu
         Variant::Color3uint8(value) => Color3uint8Value::new(*value).to_lua(context),
         Variant::ColorSequence(_) => unimplemented_type("ColorSequence"),
         Variant::Content(value) => AsRef::<str>::as_ref(value).to_lua(context),
-        Variant::Enum(_) => unimplemented_type("Enum"),
+        Variant::Enum(enum_value) => EnumValue::new(*enum_value).to_lua(context),
         Variant::Float32(value) => value.to_lua(context),
         Variant::Float64(value) => value.to_lua(context),
         Variant::Int32(value) => value.to_lua(context),
@@ -95,13 +95,16 @@ pub fn lua_to_rbxvalue(ty: VariantType, value: LuaValue<'_>) -> LuaResult<Varian
             let vector3int16 = &*user_data.borrow::<Vector3int16Value>()?;
             Ok(vector3int16.into())
         }
-
+        (VariantType::Enum, LuaValue::Integer(value)) => Ok(Variant::Enum(Enum::from_u32(value as u32))),
+        (VariantType::Enum, LuaValue::UserData(ref user_data)) => {
+            let enum_value = &*user_data.borrow::<EnumValue>()?;
+            Ok(enum_value.into())
+        }
         (VariantType::BinaryString, LuaValue::String(lua_string)) => Ok(Variant::BinaryString(
             base64::decode(lua_string)
                 .map_err(rlua::Error::external)?
                 .into(),
         )),
-
         (_, unknown_value) => Err(rlua::Error::external(format!(
             "The Lua value {:?} could not be converted to the Roblox type {:?}",
             unknown_value, ty
@@ -467,6 +470,49 @@ impl UserData for CFrameValue {
 
         methods.add_meta_method(MetaMethod::Index, |context, this, key: String| {
             this.meta_index(context, &key)
+        });
+
+        methods.add_meta_method(MetaMethod::ToString, |context, this, _arg: ()| {
+            this.to_string().to_lua(context)
+        });
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EnumValue(Enum);
+
+impl EnumValue {
+    pub fn new(value: Enum) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&EnumValue> for Variant {
+    fn from(enum_value: &EnumValue) -> Variant {
+        Variant::Enum(enum_value.0)
+    }
+}
+
+impl From<&u32> for EnumValue {
+    fn from(value: &u32) -> Self {
+        EnumValue(Enum::from_u32(*value))
+    }
+}
+
+impl fmt::Display for EnumValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.0.to_u32()
+        )
+    }
+}
+
+impl UserData for EnumValue {
+    fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_meta_method(MetaMethod::Eq, |context, this, rhs: Self| {
+            (this.0 == rhs.0).to_lua(context)
         });
 
         methods.add_meta_method(MetaMethod::ToString, |context, this, _arg: ()| {

@@ -1,5 +1,6 @@
 mod cframe;
 mod instance;
+mod enum_item;
 
 use std::sync::Arc;
 
@@ -12,6 +13,7 @@ use crate::{
 };
 
 use cframe::CFrameUserData;
+use enum_item::EnumUserData;
 pub use instance::LuaInstance;
 
 pub struct RobloxApi;
@@ -23,7 +25,7 @@ impl RobloxApi {
         context.globals().set("Vector3int16", Vector3int16)?;
         context.globals().set("Color3", Color3)?;
         context.globals().set("CFrame", CFrameUserData)?;
-
+        context.globals().set("Enum", EnumUserData)?;
         Ok(())
     }
 }
